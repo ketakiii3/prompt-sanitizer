@@ -1,37 +1,29 @@
+# backend/Dockerfile
+
+# Use an official Python runtime as a parent image
 FROM python:3.11-slim
 
-# Set working directory
+# Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    gcc \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
+# Install curl for healthchecks
+# By specifying an Indian mirror (deb.iitd.ac.in), downloads will be much faster.
+# We also clean up the apt cache in the same layer to reduce image size.
+RUN --mount=type=cache,target=/var/cache/apt \
+    apt-get update && \
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy the requirements file into the container at /app
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
+# Install any needed packages specified in requirements.txt
+# Using a cache mount here will also speed up subsequent builds.
+RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy the rest of the application's code into the container at /app
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p /app/models /app/data /app/logs
-
-# Set Python path
-ENV PYTHONPATH=/app
-
-# Expose port
-EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# Command to run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

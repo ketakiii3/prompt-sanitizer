@@ -11,7 +11,7 @@ def download_and_process_jigsaw_data():
     """
     # Load the dataset from Hugging Face
     print("Downloading Jigsaw Toxic Comment Classification dataset...")
-    dataset = load_dataset("jigsaw_toxicity_pred", "toxic_comment_classification")
+    dataset = load_dataset("google/jigsaw_toxicity_pred")
     print("Dataset downloaded successfully.")
 
     # Convert the training split to a pandas DataFrame
