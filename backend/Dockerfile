@@ -26,4 +26,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY . .
 
 # Command to run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# This tells uvicorn to look for the 'app' object inside the 'main.py' file,
+# which is inside the 'app' module/directory.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
