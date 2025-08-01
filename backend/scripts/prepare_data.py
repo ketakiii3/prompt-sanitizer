@@ -3,85 +3,68 @@
 import pandas as pd
 import os
 from sklearn.model_selection import train_test_split
-import requests
-import zipfile
-import io
 
-def download_and_process_jigsaw_data():
+def load_and_process_local_data():
     """
-    Downloads the Jigsaw Toxic Comment Classification dataset from a direct URL,
-    processes it, and returns a pandas DataFrame.
-    This method avoids using the huggingface `datasets` library.
+    Loads the Jigsaw training data from a local CSV file, processes it,
+    and returns a pandas DataFrame.
     """
-    # This is a direct download link to the zip file from the original Kaggle competition.
-    url = "https://storage.googleapis.com/paparoma-data/jigsaw-toxic-comment-classification-challenge.zip"
+    # This line defines the path to your manually downloaded CSV file.
+    # The path is relative to the `backend` directory, which is our working directory in the Docker container.
+    local_csv_path = "./jigsaw_toxicity_pred/train.csv"
     
-    print("Downloading Jigsaw dataset from direct link...")
+    print(f"Loading dataset from local file: {local_csv_path}")
     
     try:
-        # This line sends a request to the URL to get the file.
-        r = requests.get(url, stream=True)
-        # This line will raise an error if the download fails (e.g., 404 Not Found).
-        r.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        print(f"Error downloading the dataset: {e}")
-        # This line exits the script if the download fails, preventing further errors.
-        exit(1)
-
-    print("Download complete. Processing in memory...")
-
-    try:
-        # This line opens the downloaded zip file directly from memory without saving it to disk.
-        z = zipfile.ZipFile(io.BytesIO(r.content))
-        
-        # This block opens the 'train.csv' file from within the zip archive
-        # and loads it into a pandas DataFrame.
-        with z.open('train.csv') as f:
-            df = pd.read_csv(f)
-            
-    except Exception as e:
-        print(f"Error processing the zip file or reading the CSV: {e}")
+        # This line reads the CSV file into a pandas DataFrame.
+        df = pd.read_csv(local_csv_path)
+    except FileNotFoundError:
+        # This is a safety check. If the file isn't found, the script will exit with a helpful message.
+        print(f"Error: The file was not found at {local_csv_path}")
+        print("Please make sure the 'jigsaw_toxicity_pred' directory containing 'train.csv' is placed inside the 'backend' directory.")
         exit(1)
 
     print("Dataset loaded successfully. Preparing data...")
 
     # A comment is considered harmful if any of the toxicity labels are 1.
-    # This line creates a new column 'is_harmful' with a value of 1 if any of the toxicity columns are 1, and 0 otherwise.
+    # This line creates a new column 'is_harmful' with a value of 1 if any toxicity column is 1, and 0 otherwise.
     df['is_harmful'] = df[['toxic', 'severe_toxic', 'obscene', 'threat', 'insult', 'identity_hate']].max(axis=1)
 
-    # Rename 'comment_text' to 'prompt_text' to match the rest of the project's code.
+    # This line renames 'comment_text' to 'prompt_text' to match the column name expected by the rest of the code.
     df = df.rename(columns={'comment_text': 'prompt_text'})
 
-    # We only need the 'prompt_text' and 'is_harmful' columns for our model.
+    # We only need the 'prompt_text' and 'is_harmful' columns for training our model.
     df = df[['prompt_text', 'is_harmful']]
 
-    # Separate the safe and harmful prompts to create a balanced dataset.
+    # We need to balance the dataset because most comments in the original data are not toxic.
+    # First, separate the harmful and safe comments.
     harmful_df = df[df['is_harmful'] == 1]
     safe_df = df[df['is_harmful'] == 0]
 
-    # To avoid a heavily biased model, we sample a smaller portion of the non-toxic comments.
-    # We'll take twice the number of harmful comments to have a good amount of safe examples.
+    # Now, take a random sample of the safe comments.
+    # We are sampling a number of safe comments equal to twice the number of harmful comments to create a more balanced set.
     safe_df_sampled = safe_df.sample(n=len(harmful_df) * 2, random_state=42)
 
-    # Combine the harmful comments and the sampled safe comments.
+    # Finally, combine the harmful comments and the sampled safe comments into one DataFrame.
     balanced_df = pd.concat([harmful_df, safe_df_sampled])
 
-    # Shuffle the dataset to ensure the data is not ordered in any way before training.
+    # This line shuffles the dataset to ensure the data is not ordered in any way before splitting.
     balanced_df = balanced_df.sample(frac=1, random_state=42).reset_index(drop=True)
 
     return balanced_df
 
 def prepare_training_data():
     """
-    Prepare and split training data.
+    Prepares and splits the data into training and testing sets.
     """
-    # This line ensures the 'data' directory exists where we will save our final CSV files.
+    # This line ensures the 'data' directory exists where we will save our final CSV files for training.
     os.makedirs("./data", exist_ok=True)
 
-    df = download_and_process_jigsaw_data()
+    # This line calls our function to load and process the local data.
+    df = load_and_process_local_data()
 
-    # Split the DataFrame into training (80%) and testing (20%) sets.
-    # stratify=df['is_harmful'] ensures both sets have the same proportion of harmful/safe comments.
+    # This line splits the DataFrame into a training set (80%) and a testing set (20%).
+    # stratify=df['is_harmful'] ensures both sets have the same proportion of harmful vs. safe comments.
     train_df, test_df = train_test_split(
         df,
         test_size=0.2,
@@ -89,10 +72,11 @@ def prepare_training_data():
         stratify=df['is_harmful']
     )
 
-    # Save the prepared data to CSV files, which the training script will use.
+    # These lines save the prepared data to CSV files, which the training script will then use.
     train_df.to_csv("./data/training_data.csv", index=False)
     test_df.to_csv("./data/test_data.csv", index=False)
 
+    # This block prints a summary of the data we've prepared.
     print("-" * 50)
     print(f"Training data saved: {len(train_df)} samples")
     print(f"Test data saved: {len(test_df)} samples")
@@ -102,4 +86,5 @@ def prepare_training_data():
 
 
 if __name__ == "__main__":
+    # This line calls the main function to start the data preparation process when the script is run.
     prepare_training_data()
